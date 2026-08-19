@@ -114,8 +114,6 @@ def _kernel_linesearch_amdgpu(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -148,8 +146,6 @@ def _kernel_solve_iter_post_linesearch_amdgpu(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -204,8 +200,6 @@ def _kernel_solve_one_iter_amdgpu(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -275,8 +269,6 @@ def _kernel_linesearch_amdgpu_decomposed(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -301,8 +293,6 @@ def _kernel_cg_save_prev_grad_amdgpu_decomposed(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -329,8 +319,6 @@ def _kernel_update_constraint_forces_amdgpu_decomposed(
     """
     len_constraints = constraint_state.active.shape[0]
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
 
     for i_c, i_b in qd.ndrange(len_constraints, _B):
         if i_c < constraint_state.n_constraints[i_b] and constraint_state.improved[i_b]:
@@ -380,8 +368,6 @@ def _kernel_update_constraint_qfrc_amdgpu_decomposed(
     """
     n_dofs = constraint_state.qfrc_constraint.shape[0]
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
 
     for i_d, i_b in qd.ndrange(n_dofs, _B):
         if constraint_state.n_constraints[i_b] > 0 and constraint_state.improved[i_b]:
@@ -407,8 +393,6 @@ def _kernel_update_constraint_cost_amdgpu_decomposed(
     relative to the qfrc/forces ones and is left at one-thread-per-env.
     """
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
 
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
@@ -429,8 +413,8 @@ def _kernel_update_constraint_cost_amdgpu_decomposed(
             for i_d in range(n_dofs):
                 v = (
                     0.5
-                    * (constraint_state.Ma[i_d, i_b] - dofs_state.force[i_d, i_b])
-                    * (constraint_state.qacc[i_d, i_b] - dofs_state.acc_smooth[i_d, i_b])
+                    * (constraint_state.Ma[i_d, i_b] - dyn_state.dofs.force[i_d, i_b])
+                    * (constraint_state.qacc[i_d, i_b] - dyn_state.dofs.acc_smooth[i_d, i_b])
                 )
                 gauss_i += v
                 cost_i += v
@@ -464,8 +448,6 @@ def _kernel_update_gradient_amdgpu_decomposed(
     rigid_config: qd.template(),
 ):
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
         block_dim=64,
@@ -894,8 +876,6 @@ def _func_ls_init_p0_wc(
     reductions over n_con. Returns p0 evaluation tuple broadcast to
     all 64 lanes.
     """
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     BLOCK_DIM = qd.static(64)
     init_red = qd.simt.block.SharedArray((8, BLOCK_DIM), gs.qd_float)
     init_bcast = qd.simt.block.SharedArray((9,), gs.qd_float)
@@ -909,8 +889,8 @@ def _func_ls_init_p0_wc(
     # 1) mv[i_d1] = sum_d2 mass_mat[d1,d2] * search[d2] (per entity).
     # Partition outer i_d1 across lanes; inner sum stays serial per lane.
     for i_e in range(n_entities):
-        d_start = entities_info.dof_start[i_e]
-        d_end = entities_info.dof_end[i_e]
+        d_start = dyn_info.entities.dof_start[i_e]
+        d_end = dyn_info.entities.dof_end[i_e]
         i_d1 = d_start + tid
         while i_d1 < d_end:
             mv = gs.qd_float(0.0)
@@ -937,7 +917,7 @@ def _func_ls_init_p0_wc(
     while i_d < n_dofs:
         s = constraint_state.search[i_d, i_b]
         Ma_d = constraint_state.Ma[i_d, i_b]
-        f_d = dofs_state.force[i_d, i_b]
+        f_d = dyn_state.dofs.force[i_d, i_b]
         mv_d = constraint_state.mv[i_d, i_b]
         my_qg1 = my_qg1 + s * Ma_d - s * f_d
         my_qg2 = my_qg2 + 0.5 * s * mv_d
@@ -1339,8 +1319,6 @@ def _kernel_solve_body_wavecoop_amdgpu(
     BLOCK_DIM = qd.static(64)
     N_DOFS = qd.static(rigid_config.n_dofs_)
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
 
     qd.loop_config(
         serialize=rigid_config.para_level < gs.PARA_LEVEL.ALL,
@@ -1510,8 +1488,8 @@ def _kernel_solve_body_wavecoop_amdgpu(
             while i_d < N_DOFS:
                 v = (
                     0.5
-                    * (constraint_state.Ma[i_d, i_b] - dofs_state.force[i_d, i_b])
-                    * (constraint_state.qacc[i_d, i_b] - dofs_state.acc_smooth[i_d, i_b])
+                    * (constraint_state.Ma[i_d, i_b] - dyn_state.dofs.force[i_d, i_b])
+                    * (constraint_state.qacc[i_d, i_b] - dyn_state.dofs.acc_smooth[i_d, i_b])
                 )
                 my_cost_partial = my_cost_partial + v
                 my_gauss_partial = my_gauss_partial + v
@@ -1542,7 +1520,7 @@ def _kernel_solve_body_wavecoop_amdgpu(
             while i_d < N_DOFS:
                 constraint_state.grad[i_d, i_b] = (
                     constraint_state.Ma[i_d, i_b]
-                    - dofs_state.force[i_d, i_b]
+                    - dyn_state.dofs.force[i_d, i_b]
                     - constraint_state.qfrc_constraint[i_d, i_b]
                 )
                 i_d = i_d + BLOCK_DIM
@@ -1556,8 +1534,8 @@ def _kernel_solve_body_wavecoop_amdgpu(
             if qd.static(rigid_config.solver_type == gs.constraint_solver.CG):
                 for i_e in range(qd.static(rigid_config.n_entities_)):
                     if rigid_info.mass_mat_mask[i_e, i_b]:
-                        e_ds = entities_info.dof_start[i_e]
-                        e_de = entities_info.dof_end[i_e]
+                        e_ds = dyn_info.entities.dof_start[i_e]
+                        e_de = dyn_info.entities.dof_end[i_e]
                         e_n = e_de - e_ds
 
                         # load y -> LDS
@@ -1866,8 +1844,6 @@ def _func_ls_init_p0_twc(
     quad_gauss / quad_total / eq_sum reductions. Returns p0 tuple
     broadcast to the 8 lanes of the env's group.
     """
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     BLOCK_DIM = qd.static(_TWC_BLOCK_DIM)
     COOP = qd.static(_TWC_COOP_FACTOR)
     ENVS = qd.static(_TWC_ENVS_PER_BLOCK)
@@ -1885,8 +1861,8 @@ def _func_ls_init_p0_twc(
 
     # 1) mv[i_d1] = sum_d2 mass_mat[d1,d2] * search[d2] per entity.
     for i_e in range(n_entities):
-        d_start = entities_info.dof_start[i_e]
-        d_end = entities_info.dof_end[i_e]
+        d_start = dyn_info.entities.dof_start[i_e]
+        d_end = dyn_info.entities.dof_end[i_e]
         i_d1 = d_start + lane_in_env
         while i_d1 < d_end:
             mv = gs.qd_float(0.0)
@@ -1913,7 +1889,7 @@ def _func_ls_init_p0_twc(
     while i_d < n_dofs:
         s = constraint_state.search[i_d, i_b]
         Ma_d = constraint_state.Ma[i_d, i_b]
-        f_d = dofs_state.force[i_d, i_b]
+        f_d = dyn_state.dofs.force[i_d, i_b]
         mv_d = constraint_state.mv[i_d, i_b]
         my_qg1 = my_qg1 + s * Ma_d - s * f_d
         my_qg2 = my_qg2 + 0.5 * s * mv_d
@@ -2535,8 +2511,6 @@ def _kernel_solve_body_tiled_wc_amdgpu(
     ENVS = qd.static(_TWC_ENVS_PER_BLOCK)
     N_DOFS = qd.static(rigid_config.n_dofs_)
     _B = rigid_config.n_envs
-    entities_info = dyn_info.entities
-    dofs_state = dyn_state.dofs
     N_BLOCKS = qd.static((rigid_config.n_envs + _TWC_ENVS_PER_BLOCK - 1) // _TWC_ENVS_PER_BLOCK)
 
     qd.loop_config(
@@ -2739,8 +2713,8 @@ def _kernel_solve_body_tiled_wc_amdgpu(
                 while i_d < N_DOFS:
                     v = (
                         0.5
-                        * (constraint_state.Ma[i_d, i_b] - dofs_state.force[i_d, i_b])
-                        * (constraint_state.qacc[i_d, i_b] - dofs_state.acc_smooth[i_d, i_b])
+                        * (constraint_state.Ma[i_d, i_b] - dyn_state.dofs.force[i_d, i_b])
+                        * (constraint_state.qacc[i_d, i_b] - dyn_state.dofs.acc_smooth[i_d, i_b])
                     )
                     my_cost_partial = my_cost_partial + v
                     my_gauss_partial = my_gauss_partial + v
@@ -2773,7 +2747,7 @@ def _kernel_solve_body_tiled_wc_amdgpu(
                 while i_d < N_DOFS:
                     constraint_state.grad[i_d, i_b] = (
                         constraint_state.Ma[i_d, i_b]
-                        - dofs_state.force[i_d, i_b]
+                        - dyn_state.dofs.force[i_d, i_b]
                         - constraint_state.qfrc_constraint[i_d, i_b]
                     )
                     i_d = i_d + COOP
@@ -2782,8 +2756,8 @@ def _kernel_solve_body_tiled_wc_amdgpu(
             # 5b: cooperative LDL^T mass solve per entity (CG only).
             if qd.static(rigid_config.solver_type == gs.constraint_solver.CG):
                 for i_e in range(qd.static(rigid_config.n_entities_)):
-                    e_ds = entities_info.dof_start[i_e]
-                    e_de = entities_info.dof_end[i_e]
+                    e_ds = dyn_info.entities.dof_start[i_e]
+                    e_de = dyn_info.entities.dof_end[i_e]
                     e_n = e_de - e_ds
                     # do_e read only for active (non-OOB) lanes; mask honored.
                     do_e = False
