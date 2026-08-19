@@ -620,8 +620,10 @@ class RigidSolver(KinematicSolver):
             n_links_=self._n_links,
         )
 
-        # Prefer the monolith solver on CPU (always faster there, perf dispatch is a waste of effort)
-        if gs.backend == gs.cpu or self.sim.options.requires_grad:
+        # Prefer the monolith solver on CPU (always faster there, perf dispatch is a waste of effort).
+        # On AMDGPU, block the CUDA graph decomposed arm (qd.graph unavailable); perf_dispatch
+        # still selects among monolith and the AMDGPU-specific variants in solver_amdgpu.
+        if gs.backend in {gs.cpu, gs.amdgpu} or self.sim.options.requires_grad:
             rigid_config["prefer_decomposed_solver"] = 0
 
         # Per-DOF mass-block bounds (see dofs_mass_block_start in array_class.py), computed here because the tiled
