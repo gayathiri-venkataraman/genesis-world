@@ -218,9 +218,18 @@ def build_model(
                 mesh_path = elem.get("filename")
                 if mesh_path.startswith("package://"):
                     mesh_path = mesh_path[10:]
+                    resolved = Path(asset_path) / mesh_path
+                    if not resolved.is_file():
+                        base_parts = Path(asset_path).parts
+                        mesh_parts = mesh_path.split("/")
+                        if mesh_parts and mesh_parts[0] in base_parts:
+                            idx = base_parts.index(mesh_parts[0])
+                            resolved = Path(*base_parts[:idx], *mesh_parts)
+                else:
+                    resolved = Path(asset_path) / mesh_path
                 # Beware symlinks must NOT be resolved, otherwise it may break the file extension, which is used by
                 # Mujoco MJCF parser to determine how to load mesh files.
-                elem.set("filename", str(Path(asset_path) / mesh_path))
+                elem.set("filename", str(resolved))
 
         with open(os.devnull, "w") as stderr, redirect_libc_stderr(stderr):
             # Parse updated URDF file as a string

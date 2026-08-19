@@ -11,3 +11,4 @@ from . import solver
 
 # now register decomposed with func_solve_body:
 from . import solver_breakdown
+from . import solver_amdgpu

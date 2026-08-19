@@ -614,6 +614,10 @@ class RigidSolver(KinematicSolver):
             ),
             enable_cooperative_constraint_kernels=enable_cooperative_constraint_kernels,
             constraint_layout_batch_first=constraint_layout_batch_first,
+            n_envs=self._B,
+            n_dofs_=self.n_dofs_,
+            n_entities_=self.n_entities_,
+            n_links_=self._n_links,
         )
 
         # Prefer the monolith solver on CPU (always faster there, perf dispatch is a waste of effort)

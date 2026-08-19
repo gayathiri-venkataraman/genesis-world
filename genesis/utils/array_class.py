@@ -131,7 +131,6 @@ class RigidInfo:
     meaninertia: qd.Tensor
     mass_parent_mask: qd.Tensor
     gravity: qd.Tensor
-    # Runtime constants
     substep_dt: qd.Tensor
     iterations: qd.Tensor
     tolerance: qd.Tensor
@@ -144,6 +143,9 @@ class RigidInfo:
     n_candidate_equalities: qd.Tensor
     hibernation_thresh_vel: qd.Tensor
     EPS: qd.Tensor
+
+
+RigidGlobalInfo = RigidInfo
 
 
 def get_rigid_info(solver, kinematic_only):
@@ -618,7 +620,9 @@ class ConstraintState:
     qacc_ws: qd.Tensor
     qacc_prev: qd.Tensor
     cost_ws: qd.Tensor
+    gauss: qd.Tensor
     cost: qd.Tensor
+    prev_cost: qd.Tensor
     gtol: qd.Tensor
     mv: qd.Tensor
     jv: qd.Tensor
@@ -771,7 +775,9 @@ def get_constraint_state(constraint_solver, solver, collider):
         is_warmstart=V(dtype=gs.qd_bool, shape=(_B,)),
         improved=V(dtype=gs.qd_bool, shape=(_B,)),
         cost_ws=V(dtype=gs.qd_float, shape=(_B,)),
+        gauss=V(dtype=gs.qd_float, shape=(_B,)),
         cost=V(dtype=gs.qd_float, shape=(_B,)),
+        prev_cost=V(dtype=gs.qd_float, shape=(_B,)),
         gtol=V(dtype=gs.qd_float, shape=(_B,)),
         ls_it=V(dtype=gs.qd_int, shape=(_B,)),
         ls_result=V(dtype=gs.qd_int, shape=(_B,)),
@@ -2657,6 +2663,10 @@ class RigidSimStaticConfig(metaclass=AutoInitMeta):
     n_entities: int = -1
     n_links: int = -1
     n_geoms: int = -1
+    n_envs: int = -1
+    n_dofs_: int = -1
+    n_entities_: int = -1
+    n_links_: int = -1
 
     @property
     def rows_per_contact(self) -> int:
