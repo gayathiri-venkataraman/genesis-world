@@ -299,11 +299,7 @@ def _kernel_cg_save_prev_grad_amdgpu_decomposed(
     )
     for i_b in range(_B):
         if constraint_state.n_constraints[i_b] > 0 and constraint_state.improved[i_b]:
-            solver.func_save_prev_grad(
-                i_b,
-                constraint_state=constraint_state,
-                rigid_config=rigid_config,
-            )
+            solver.func_save_prev_grad(i_b, constraint_state)
 
 
 @qd.kernel(fastcache=True)
